@@ -11,6 +11,8 @@
     "format": "prettier --write ."
   },
   "dependencies": {
+    "@duckdb/duckdb-wasm": "^1.30.0",
+    "apache-arrow": "^21.0.0",
     "react": "^19.1.1",
     "react-dom": "^19.1.1"
   },
