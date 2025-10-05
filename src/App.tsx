@@ -1,4 +1,3 @@
-import React from 'react'
 import useDuckDB from './hooks/useDuckDB'
 
 function App() {
