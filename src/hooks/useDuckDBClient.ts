@@ -1,10 +1,11 @@
+// src/hooks/useDuckDBClient.ts
 import { useEffect, useRef, useState } from 'react'
 import { tableFromIPC } from 'apache-arrow'
 
 type DbStatus = 'idle' | 'initializing' | 'ready' | 'error'
 type FileStatus = 'idle' | 'registering' | 'ready' | 'error'
 
-export default function useDuckDB() {
+export default function useDuckDBClient() {
   const [status, setStatus] = useState<DbStatus>('idle')
   const [fileStatus, setFileStatus] = useState<FileStatus>('idle')
 
@@ -86,9 +87,6 @@ export default function useDuckDB() {
           setQueryResult([])
           break
         }
-
-        default:
-          break
       }
     }
 

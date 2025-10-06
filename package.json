@@ -12,7 +12,8 @@
   },
   "dependencies": {
     "@duckdb/duckdb-wasm": "^1.30.0",
-    "apache-arrow": "^21.0.0",
+    "@tanstack/react-table": "^8.21.3",
+    "@tanstack/react-virtual": "^3.13.12",
     "react": "^19.1.1",
     "react-dom": "^19.1.1"
   },
@@ -24,6 +25,7 @@
     "@typescript-eslint/eslint-plugin": "^8.45.0",
     "@typescript-eslint/parser": "^8.45.0",
     "@vitejs/plugin-react": "^5.0.4",
+    "apache-arrow": "^21.0.0",
     "eslint": "^9.37.0",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-react": "^7.37.5",
