@@ -1,9 +1,18 @@
 import { useEffect, useRef, useState } from 'react'
 
-type DbStatus = 'idle' | 'initializing' | 'ready' | 'error'
+export type DbStatus = 'idle' | 'initializing' | 'ready' | 'error'
+export type FileStatus = 'idle' | 'registering' | 'ready' | 'error'
 
-export function useDuckDB(): DbStatus {
+type UseDuckDBReturn = {
+  status: DbStatus
+  fileStatus: FileStatus
+  worker: Worker | null
+  registerFile: (file: File) => void
+}
+
+export function useDuckDB(): UseDuckDBReturn {
   const [status, setStatus] = useState<DbStatus>('idle')
+  const [fileStatus, setFileStatus] = useState<FileStatus>('idle')
   const workerRef = useRef<Worker | null>(null)
 
   useEffect(() => {
@@ -16,16 +25,25 @@ export function useDuckDB(): DbStatus {
 
     worker.onmessage = (evt: MessageEvent) => {
       const msg = evt.data
-      if (msg?.type === 'INIT_SUCCESS') {
-        setStatus('ready')
-      } else if (msg?.type === 'INIT_ERROR') {
-        setStatus('error')
+      switch (msg?.type) {
+        case 'INIT_SUCCESS':
+          setStatus('ready')
+          break
+        case 'INIT_ERROR':
+          setStatus('error')
+          break
+        case 'REGISTER_SUCCESS':
+          setFileStatus('ready')
+          break
+        case 'REGISTER_FAILURE':
+          setFileStatus('error')
+          break
+        default:
+          break
       }
     }
 
-    worker.onerror = () => {
-      setStatus('error')
-    }
+    worker.onerror = () => setStatus('error')
 
     return () => {
       workerRef.current?.terminate()
@@ -33,7 +51,13 @@ export function useDuckDB(): DbStatus {
     }
   }, [])
 
-  return status
+  const registerFile = (file: File) => {
+    if (!workerRef.current) return
+    setFileStatus('registering')
+    workerRef.current.postMessage({ type: 'REGISTER_FILE', file })
+  }
+
+  return { status, fileStatus, worker: workerRef.current, registerFile }
 }
 
 export default useDuckDB
