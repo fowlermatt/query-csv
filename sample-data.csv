@@ -1,0 +1,16 @@
+id,name,age,city,salary,department,hire_date
+1,Alice Johnson,28,New York,75000,Engineering,2020-03-15
+2,Bob Smith,34,San Francisco,82000,Sales,2019-07-22
+3,Charlie Brown,45,Chicago,95000,Engineering,2018-01-10
+4,Diana Prince,29,Los Angeles,68000,Marketing,2021-05-03
+5,Eve Davis,38,Seattle,88000,Engineering,2017-11-28
+6,Frank Miller,52,Boston,105000,Management,2015-02-14
+7,Grace Lee,31,Austin,73000,Sales,2020-09-08
+8,Henry Wilson,41,Denver,91000,Engineering,2016-06-19
+9,Ivy Chen,26,Portland,64000,Marketing,2022-01-25
+10,Jack Taylor,33,Miami,79000,Sales,2019-12-11
+11,Kate Martinez,37,Phoenix,86000,Engineering,2018-08-05
+12,Liam Anderson,44,Dallas,98000,Management,2016-03-30
+13,Mia Thomas,30,San Diego,76000,Marketing,2020-11-17
+14,Noah Jackson,35,Nashville,84000,Sales,2019-04-21
+15,Olivia White,27,Atlanta,71000,Engineering,2021-07-09

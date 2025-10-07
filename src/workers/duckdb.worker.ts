@@ -4,7 +4,7 @@ import * as duckdb from '@duckdb/duckdb-wasm'
 import { tableToIPC, Table as ArrowTable } from 'apache-arrow'
 
 import duckdbWasmUrl from '@duckdb/duckdb-wasm/dist/duckdb-mvp.wasm?url'
-import duckdbBrowserWorkerUrl from '@duckdb/duckdb-wasm/dist/duckdb-browser-mvp.worker.js?url'
+import duckdbBrowserWorkerUrl from '@duckdb/duckdb-wasm/dist/duckdb-browser-mvp.worker.js?url&inline'
 let db: duckdb.AsyncDuckDB | null = null
 
 ;(async () => {
