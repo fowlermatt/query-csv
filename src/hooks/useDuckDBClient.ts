@@ -19,21 +19,31 @@ export default function useDuckDBClient() {
   useEffect(() => {
     setStatus('initializing')
 
+    // Create the DuckDB worker (module worker that imports our dedicated worker file)
     const worker = new Worker(new URL('../workers/duckdb.worker.ts', import.meta.url), {
       type: 'module',
     })
     workerRef.current = worker
 
+    // Fail-fast watchdog so the UI doesn't spin forever
+    const watchdog = setTimeout(() => {
+      setStatus((prev) => (prev === 'initializing' ? 'error' : prev))
+    }, 15000)
+
     worker.onmessage = (evt: MessageEvent) => {
       const msg = evt.data
       switch (msg?.type) {
+        // ---- Boot status ----
         case 'INIT_SUCCESS':
+          clearTimeout(watchdog)
           setStatus('ready')
           break
         case 'INIT_ERROR':
+          clearTimeout(watchdog)
           setStatus('error')
           break
 
+        // ---- File registration ----
         case 'REGISTER_SUCCESS':
           setFileStatus('ready')
           break
@@ -41,6 +51,7 @@ export default function useDuckDBClient() {
           setFileStatus('error')
           break
 
+        // ---- Query results ----
         case 'QUERY_SUCCESS': {
           const end = performance.now()
           const start = queryStartRef.current ?? end
@@ -48,22 +59,24 @@ export default function useDuckDBClient() {
           queryStartRef.current = null
 
           try {
+            // msg.payload is a transferred Uint8Array (Arrow IPC stream)
             const arrowBuffer: Uint8Array =
               msg.payload instanceof Uint8Array ? msg.payload : new Uint8Array(msg.payload)
-            const table = tableFromIPC(arrowBuffer)
 
+            const table = tableFromIPC(arrowBuffer)
             const numRows = table.numRows
             const numCols = table.numCols
 
-            const columns = Array.from({ length: numCols }, (_, ci) => table.getChildAt(ci))
-            const fieldNames = table.schema.fields.map((f, ci) => f?.name ?? `col_${ci}`)
+            // Vector references and field names from schema
+            const vectors = Array.from({ length: numCols }, (_, i) => table.getChildAt(i))
+            const fieldNames = table.schema.fields.map((f, i) => f?.name ?? `col_${i}`)
 
             const rows: Record<string, unknown>[] = []
-            for (let i = 0; i < numRows; i++) {
+            for (let r = 0; r < numRows; r++) {
               const obj: Record<string, unknown> = {}
               for (let c = 0; c < numCols; c++) {
-                const col = columns[c]
-                obj[fieldNames[c]] = col ? col.get(i) : undefined
+                const v = vectors[c]
+                obj[fieldNames[c]] = v ? v.get(r) : undefined
               }
               rows.push(obj)
             }
@@ -87,16 +100,29 @@ export default function useDuckDBClient() {
           setQueryResult([])
           break
         }
+
+        default:
+          // no-op
+          break
       }
     }
 
-    worker.onerror = () => setStatus('error')
+    worker.onerror = (e) => {
+      clearTimeout(watchdog)
+      // Surface any boot error
+      // eslint-disable-next-line no-console
+      console.error('[useDuckDBClient] worker error', e)
+      setStatus('error')
+    }
 
     return () => {
+      clearTimeout(watchdog)
       workerRef.current?.terminate()
       workerRef.current = null
     }
   }, [])
+
+  // ---- API exposed to components ----
 
   const registerFile = (file: File) => {
     if (!workerRef.current) return
@@ -106,21 +132,33 @@ export default function useDuckDBClient() {
 
   const runQuery = (sql: string) => {
     if (!workerRef.current) return
+    // Clear prior query state
     setQueryError(null)
     setQueryResult([])
     setQueryExecutionTime(null)
+
+    // Start timing
     queryStartRef.current = performance.now()
+
+    // Fire to worker
     workerRef.current.postMessage({ type: 'EXECUTE_QUERY', payload: sql })
   }
 
   return {
+    // statuses
     status,
     fileStatus,
+
+    // worker handle (optional external use)
     worker: workerRef.current,
+
+    // actions
     registerFile,
+    runQuery,
+
+    // query state
     queryResult,
     queryError,
     queryExecutionTime,
-    runQuery,
   }
 }

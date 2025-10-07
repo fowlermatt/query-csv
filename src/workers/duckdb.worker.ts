@@ -1,159 +1,111 @@
-import { useEffect, useRef, useState } from 'react'
-import { tableFromIPC } from 'apache-arrow'
+/// <reference lib="webworker" />
 
-type DbStatus = 'idle' | 'initializing' | 'ready' | 'error'
-type FileStatus = 'idle' | 'registering' | 'ready' | 'error'
+import * as duckdb from '@duckdb/duckdb-wasm'
+import { tableToIPC, Table as ArrowTable } from 'apache-arrow'
 
-export default function useDuckDB() {
-  const [status, setStatus] = useState<DbStatus>('idle')
-  const [fileStatus, setFileStatus] = useState<FileStatus>('idle')
-  const [queryResult, setQueryResult] = useState<Record<string, unknown>[]>([])
-  const [queryError, setQueryError] = useState<string | null>(null)
-  const [queryExecutionTime, setQueryExecutionTime] = useState<number | null>(null)
-  const workerRef = useRef<Worker | null>(null)
-  const queryStartRef = useRef<number | null>(null)
+import duckdbWasmUrl from '@duckdb/duckdb-wasm/dist/duckdb-mvp.wasm?url'
+import duckdbBrowserWorkerUrl from '@duckdb/duckdb-wasm/dist/duckdb-browser-mvp.worker.js?url'
+let db: duckdb.AsyncDuckDB | null = null
 
-  useEffect(() => {
-    setStatus('initializing')
-    
-    const worker = new Worker(
-      new URL('../workers/duckdb.worker.ts', import.meta.url),
-      { type: 'module' }
-    )
-    
-    workerRef.current = worker
+;(async () => {
+  try {
+    const head = await fetch(duckdbWasmUrl, { method: 'HEAD' })
+    if (!head.ok) {
+      self.postMessage({
+        type: 'INIT_ERROR',
+        error: `WASM not reachable (${head.status}) at ${duckdbWasmUrl}`,
+      })
+      return
+    }
 
-    const watchdog = setTimeout(() => {
-      console.error('DuckDB worker initialization timeout')
-      setStatus('error')
-    }, 15000)
+    const internalWorker: Worker = await duckdb.createWorker(duckdbBrowserWorkerUrl)
 
-    worker.onmessage = (evt: MessageEvent) => {
-      const msg = evt.data
+    const logger = new duckdb.ConsoleLogger()
+    db = new duckdb.AsyncDuckDB(logger, internalWorker)
 
-      switch (msg?.type) {
-        case 'INIT_SUCCESS':
-          clearTimeout(watchdog)
-          setStatus('ready')
-          break
+    await db.instantiate(duckdbWasmUrl)
 
-        case 'INIT_ERROR':
-          clearTimeout(watchdog)
-          setStatus('error')
-          console.error('DuckDB init error:', msg?.error)
-          break
+    self.postMessage({ type: 'INIT_SUCCESS' })
+  } catch (err) {
+    self.postMessage({ type: 'INIT_ERROR', error: String(err) })
+  }
+})()
 
-        case 'REGISTER_SUCCESS':
-          setFileStatus('ready')
-          break
+self.addEventListener('message', async (evt: MessageEvent) => {
+  const msg = evt.data
+  if (!msg || typeof msg !== 'object') return
 
-        case 'REGISTER_FAILURE':
-          setFileStatus('error')
-          console.error('File registration error:', msg?.error)
-          break
-
-        case 'QUERY_SUCCESS': {
-          const end = performance.now()
-          const start = queryStartRef.current ?? end
-          setQueryExecutionTime(end - start)
-          queryStartRef.current = null
-
-          try {
-            const arrowBuffer: Uint8Array =
-              msg.payload instanceof Uint8Array
-                ? msg.payload
-                : new Uint8Array(msg.payload)
-            
-            const table = tableFromIPC(arrowBuffer)
-            const numRows = table.numRows
-            const numCols = table.numCols
-            const columns = Array.from({ length: numCols }, (_, ci) =>
-              table.getChildAt(ci)
-            )
-            const fieldNames = table.schema.fields.map(
-              (f, ci) => f?.name ?? `col_${ci}`
-            )
-
-            const rows: Record<string, unknown>[] = []
-            for (let i = 0; i < numRows; i++) {
-              const obj: Record<string, unknown> = {}
-              for (let c = 0; c < numCols; c++) {
-                const col = columns[c]
-                obj[fieldNames[c]] = col ? col.get(i) : undefined
-              }
-              rows.push(obj)
-            }
-
-            setQueryResult(rows)
-            setQueryError(null)
-          } catch (e: unknown) {
-            const errorMsg = e instanceof Error ? e.message : String(e)
-            setQueryError(errorMsg)
-            setQueryResult([])
-          }
-          break
+  switch (msg.type) {
+    case 'REGISTER_FILE': {
+      try {
+        if (!db) {
+          self.postMessage({ type: 'REGISTER_FAILURE', payload: 'Database not initialized' })
+          return
+        }
+        const file: File | undefined = msg.file
+        if (!file) {
+          self.postMessage({ type: 'REGISTER_FAILURE', payload: 'No file provided' })
+          return
         }
 
-        case 'QUERY_FAILURE': {
-          const end = performance.now()
-          const start = queryStartRef.current ?? end
-          setQueryExecutionTime(end - start)
-          queryStartRef.current = null
-          
-          setQueryError(
-            typeof msg?.payload === 'string' ? msg.payload : 'Query failed'
-          )
-          setQueryResult([])
-          break
+        const VIRTUAL_NAME = 'source'
+        const nameLower = (file.name || '').toLowerCase()
+
+        if (nameLower.endsWith('.csv')) {
+          const text = await file.text()
+          await db.registerFileText(VIRTUAL_NAME, text)
+        } else if (nameLower.endsWith('.parquet')) {
+          const buf = new Uint8Array(await file.arrayBuffer())
+          await db.registerFileBuffer(VIRTUAL_NAME, buf)
+        } else {
+          self.postMessage({
+            type: 'REGISTER_FAILURE',
+            payload: 'Unsupported file type (only .csv and .parquet)',
+          })
+          return
         }
 
-        default:
-          break
+        self.postMessage({ type: 'REGISTER_SUCCESS' })
+      } catch (e: any) {
+        self.postMessage({ type: 'REGISTER_FAILURE', payload: e?.message ?? String(e) })
       }
+      break
     }
 
-    worker.onerror = (error) => {
-      clearTimeout(watchdog)
-      console.error('Worker error:', error)
-      setStatus('error')
+    case 'EXECUTE_QUERY': {
+      if (!db) {
+        self.postMessage({ type: 'QUERY_FAILURE', payload: 'Database not initialized' })
+        return
+      }
+      const sql: string | undefined = msg.payload
+      if (!sql || typeof sql !== 'string') {
+        self.postMessage({ type: 'QUERY_FAILURE', payload: 'No SQL provided' })
+        return
+      }
+
+      let conn: duckdb.AsyncDuckDBConnection | null = null
+      try {
+        conn = await db.connect()
+
+        const duckdbTable = await conn.query(sql)
+        const arrowBuffer: Uint8Array = tableToIPC(
+          duckdbTable as unknown as ArrowTable,
+          'stream'
+        )
+
+        self.postMessage({ type: 'QUERY_SUCCESS', payload: arrowBuffer }, [arrowBuffer.buffer])
+      } catch (e: any) {
+        self.postMessage({ type: 'QUERY_FAILURE', payload: e?.message ?? String(e) })
+      } finally {
+        try {
+          await conn?.close()
+        } catch {
+        }
+      }
+      break
     }
 
-    return () => {
-      clearTimeout(watchdog)
-      workerRef.current?.terminate()
-      workerRef.current = null
-    }
-  }, [])
-
-  const registerFile = (file: File) => {
-    if (!workerRef.current) {
-      console.warn('Worker not ready')
-      return
-    }
-    setFileStatus('registering')
-    workerRef.current.postMessage({ type: 'REGISTER_FILE', file })
+    default:
+      break
   }
-
-  const runQuery = (sql: string) => {
-    if (!workerRef.current) {
-      console.warn('Worker not ready')
-      return
-    }
-    setQueryError(null)
-    setQueryResult([])
-    setQueryExecutionTime(null)
-    queryStartRef.current = performance.now()
-    workerRef.current.postMessage({ type: 'EXECUTE_QUERY', payload: sql })
-  }
-
-  return {
-    status,
-    fileStatus,
-    worker: workerRef.current,
-    registerFile,
-    queryResult,
-    queryError,
-    queryExecutionTime,
-    runQuery,
-  }
-}
+})
