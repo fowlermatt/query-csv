@@ -3,6 +3,16 @@
   margin: 0 auto;
   padding: 2rem;
   text-align: center;
+  --background: #1e1e2e;
+  --surface: #2a2f3a;
+  --border: #4a5060;
+  --text: #d4d4d4;
+  --primary: #007acc;
+}
+body {
+  background-color: var(--background);
+  color: var(--text);
+  font-family: sans-serif;
 }
 
 .logo {

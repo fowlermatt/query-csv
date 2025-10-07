@@ -6,6 +6,7 @@ import {
   type ColumnDef,
 } from '@tanstack/react-table'
 import { useVirtualizer } from '@tanstack/react-virtual'
+import './ResultsTable.css';
 
 type ResultsTableProps<T extends object> = {
   columns: ColumnDef<T, any>[]
@@ -13,7 +14,6 @@ type ResultsTableProps<T extends object> = {
   rowEstimate?: number
   overscan?: number
 }
-
 
 function ResultsTable<T extends object>({
   columns,
@@ -38,37 +38,24 @@ function ResultsTable<T extends object>({
 
   const virtualItems = rowVirtualizer.getVirtualItems()
   const totalSize = rowVirtualizer.getTotalSize()
-
-  const headerGroups = useMemo(() => table.getHeaderGroups(), [table])
+  const headerGroups = table.getHeaderGroups();
 
   return (
-    <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, overflow: 'hidden' }}>
-      <div
-        style={{
-          position: 'sticky',
-          top: 0,
-          zIndex: 1,
-          background: '#f9fafb',
-          borderBottom: '1px solid #e5e7eb',
-        }}
-      >
+    <div className="table-container">
+      {/* HEADER */}
+      <div className="table-header">
         {headerGroups.map((headerGroup) => (
           <div
             key={headerGroup.id}
+            className="table-header-row"
             style={{
-              display: 'grid',
               gridTemplateColumns: headerGroup.headers
-                .map((h) => `${h.getSize() || 1}fr`)
+                .map((h) => `${h.getSize()}fr`)
                 .join(' '),
-              gap: 0,
-              padding: '8px 12px',
-              fontWeight: 600,
-              fontSize: 12,
-              color: '#111827',
             }}
           >
             {headerGroup.headers.map((header) => (
-              <div key={header.id} style={{ whiteSpace: 'nowrap' }}>
+              <div key={header.id} className="table-header-cell">
                 {header.isPlaceholder
                   ? null
                   : flexRender(header.column.columnDef.header, header.getContext())}
@@ -78,28 +65,15 @@ function ResultsTable<T extends object>({
         ))}
       </div>
 
-      <div
-        ref={parentRef}
-        style={{
-          height: 400,
-          overflow: 'auto',
-          position: 'relative',
-          fontSize: 13,
-          lineHeight: 1.4,
-        }}
-      >
-        <div
-          style={{
-            height: totalSize,
-            position: 'relative',
-            width: '100%',
-          }}
-        >
+      {/* BODY (VIRTUALIZED) */}
+      <div ref={parentRef} className="table-body">
+        <div style={{ height: totalSize, position: 'relative', width: '100%' }}>
           {virtualItems.map((virtualRow) => {
             const row = table.getRowModel().rows[virtualRow.index]
             return (
               <div
                 key={row.id}
+                className="table-row"
                 data-index={virtualRow.index}
                 ref={rowVirtualizer.measureElement}
                 style={{
@@ -108,22 +82,18 @@ function ResultsTable<T extends object>({
                   left: 0,
                   width: '100%',
                   transform: `translateY(${virtualRow.start}px)`,
-                  borderBottom: '1px solid #f3f4f6',
-                  background: virtualRow.index % 2 ? '#fff' : '#fcfcfc',
                 }}
               >
                 <div
+                  className="table-row-content"
                   style={{
-                    display: 'grid',
                     gridTemplateColumns: row.getVisibleCells()
-                      .map((c) => `${c.column.getSize() || 1}fr`)
+                      .map((c) => `${c.column.getSize()}fr`)
                       .join(' '),
-                    gap: 0,
-                    padding: '8px 12px',
                   }}
                 >
                   {row.getVisibleCells().map((cell) => (
-                    <div key={cell.id} style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    <div key={cell.id} className="table-cell">
                       {flexRender(cell.column.columnDef.cell, cell.getContext())}
                     </div>
                   ))}
