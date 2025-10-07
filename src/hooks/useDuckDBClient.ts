@@ -1,4 +1,3 @@
-// src/hooks/useDuckDBClient.ts
 import { useEffect, useRef, useState } from 'react'
 import { tableFromIPC } from 'apache-arrow'
 
@@ -19,13 +18,11 @@ export default function useDuckDBClient() {
   useEffect(() => {
     setStatus('initializing')
 
-    // Create the DuckDB worker (module worker that imports our dedicated worker file)
     const worker = new Worker(new URL('../workers/duckdb.worker.ts', import.meta.url), {
       type: 'module',
     })
     workerRef.current = worker
 
-    // Fail-fast watchdog so the UI doesn't spin forever
     const watchdog = setTimeout(() => {
       setStatus((prev) => (prev === 'initializing' ? 'error' : prev))
     }, 15000)
@@ -33,7 +30,6 @@ export default function useDuckDBClient() {
     worker.onmessage = (evt: MessageEvent) => {
       const msg = evt.data
       switch (msg?.type) {
-        // ---- Boot status ----
         case 'INIT_SUCCESS':
           clearTimeout(watchdog)
           setStatus('ready')
@@ -43,7 +39,6 @@ export default function useDuckDBClient() {
           setStatus('error')
           break
 
-        // ---- File registration ----
         case 'REGISTER_SUCCESS':
           setFileStatus('ready')
           break
@@ -51,7 +46,6 @@ export default function useDuckDBClient() {
           setFileStatus('error')
           break
 
-        // ---- Query results ----
         case 'QUERY_SUCCESS': {
           const end = performance.now()
           const start = queryStartRef.current ?? end
@@ -59,7 +53,6 @@ export default function useDuckDBClient() {
           queryStartRef.current = null
 
           try {
-            // msg.payload is a transferred Uint8Array (Arrow IPC stream)
             const arrowBuffer: Uint8Array =
               msg.payload instanceof Uint8Array ? msg.payload : new Uint8Array(msg.payload)
 
@@ -67,7 +60,6 @@ export default function useDuckDBClient() {
             const numRows = table.numRows
             const numCols = table.numCols
 
-            // Vector references and field names from schema
             const vectors = Array.from({ length: numCols }, (_, i) => table.getChildAt(i))
             const fieldNames = table.schema.fields.map((f, i) => f?.name ?? `col_${i}`)
 
@@ -102,15 +94,12 @@ export default function useDuckDBClient() {
         }
 
         default:
-          // no-op
           break
       }
     }
 
     worker.onerror = (e) => {
       clearTimeout(watchdog)
-      // Surface any boot error
-      // eslint-disable-next-line no-console
       console.error('[useDuckDBClient] worker error', e)
       setStatus('error')
     }
@@ -122,7 +111,6 @@ export default function useDuckDBClient() {
     }
   }, [])
 
-  // ---- API exposed to components ----
 
   const registerFile = (file: File) => {
     if (!workerRef.current) return
@@ -132,31 +120,21 @@ export default function useDuckDBClient() {
 
   const runQuery = (sql: string) => {
     if (!workerRef.current) return
-    // Clear prior query state
     setQueryError(null)
     setQueryResult([])
     setQueryExecutionTime(null)
 
-    // Start timing
     queryStartRef.current = performance.now()
 
-    // Fire to worker
     workerRef.current.postMessage({ type: 'EXECUTE_QUERY', payload: sql })
   }
 
   return {
-    // statuses
     status,
     fileStatus,
-
-    // worker handle (optional external use)
     worker: workerRef.current,
-
-    // actions
     registerFile,
     runQuery,
-
-    // query state
     queryResult,
     queryError,
     queryExecutionTime,
