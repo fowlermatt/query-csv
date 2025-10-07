@@ -3,8 +3,9 @@
 import * as duckdb from '@duckdb/duckdb-wasm'
 import { tableToIPC, Table as ArrowTable } from 'apache-arrow'
 
-import duckdbWasmUrl from '@duckdb/duckdb-wasm/dist/duckdb-mvp.wasm?url'
-import duckdbBrowserWorkerUrl from '@duckdb/duckdb-wasm/dist/duckdb-browser-mvp.worker.js?url'
+import duckdbWasmUrl from '@duckdb/duckdb-wasm/dist/duckdb-eh.wasm?url'
+import duckdbBrowserWorkerUrl from '@duckdb/duckdb-wasm/dist/duckdb-browser-eh.worker.js?url'
+
 let db: duckdb.AsyncDuckDB | null = null
 
 ;(async () => {
@@ -38,31 +39,24 @@ self.addEventListener('message', async (evt: MessageEvent) => {
   switch (msg.type) {
     case 'REGISTER_FILE': {
       try {
-        if (!db) {
-          self.postMessage({ type: 'REGISTER_FAILURE', payload: 'Database not initialized' })
-          return
-        }
+        if (!db) return self.postMessage({ type: 'REGISTER_FAILURE', payload: 'Database not initialized' })
         const file: File | undefined = msg.file
-        if (!file) {
-          self.postMessage({ type: 'REGISTER_FAILURE', payload: 'No file provided' })
-          return
-        }
+        if (!file) return self.postMessage({ type: 'REGISTER_FAILURE', payload: 'No file provided' })
 
         const VIRTUAL_NAME = 'source'
-        const nameLower = (file.name || '').toLowerCase()
+        const lower = (file.name || '').toLowerCase()
 
-        if (nameLower.endsWith('.csv')) {
+        if (lower.endsWith('.csv')) {
           const text = await file.text()
           await db.registerFileText(VIRTUAL_NAME, text)
-        } else if (nameLower.endsWith('.parquet')) {
+        } else if (lower.endsWith('.parquet')) {
           const buf = new Uint8Array(await file.arrayBuffer())
           await db.registerFileBuffer(VIRTUAL_NAME, buf)
         } else {
-          self.postMessage({
+          return self.postMessage({
             type: 'REGISTER_FAILURE',
             payload: 'Unsupported file type (only .csv and .parquet)',
           })
-          return
         }
 
         self.postMessage({ type: 'REGISTER_SUCCESS' })
@@ -73,39 +67,32 @@ self.addEventListener('message', async (evt: MessageEvent) => {
     }
 
     case 'EXECUTE_QUERY': {
-      if (!db) {
-        self.postMessage({ type: 'QUERY_FAILURE', payload: 'Database not initialized' })
-        return
-      }
+      if (!db) return self.postMessage({ type: 'QUERY_FAILURE', payload: 'Database not initialized' })
       const sql: string | undefined = msg.payload
-      if (!sql || typeof sql !== 'string') {
-        self.postMessage({ type: 'QUERY_FAILURE', payload: 'No SQL provided' })
-        return
-      }
+      if (!sql) return self.postMessage({ type: 'QUERY_FAILURE', payload: 'No SQL provided' })
 
       let conn: duckdb.AsyncDuckDBConnection | null = null
       try {
         conn = await db.connect()
 
         const duckdbTable = await conn.query(sql)
+
+        // Serialize to Arrow IPC (preferred fast path)
         const arrowBuffer: Uint8Array = tableToIPC(
           duckdbTable as unknown as ArrowTable,
           'stream'
         )
-
         self.postMessage({ type: 'QUERY_SUCCESS', payload: arrowBuffer }, [arrowBuffer.buffer])
       } catch (e: any) {
         self.postMessage({ type: 'QUERY_FAILURE', payload: e?.message ?? String(e) })
       } finally {
-        try {
-          await conn?.close()
-        } catch {
-        }
+        try { await conn?.close() } catch {}
       }
       break
     }
 
     default:
+      // ignore
       break
   }
 })
