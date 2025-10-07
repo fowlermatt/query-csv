@@ -18,7 +18,7 @@ let db: duckdb.AsyncDuckDB | null = null
       return
     }
 
-    const internalWorker: Worker = await duckdb.createWorker(duckdbBrowserWorkerUrl)
+    const internalWorker = new Worker(duckdbBrowserWorkerUrl)
 
     const logger = new duckdb.ConsoleLogger()
     db = new duckdb.AsyncDuckDB(logger, internalWorker)
