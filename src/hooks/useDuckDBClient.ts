@@ -3,6 +3,7 @@ import { tableFromIPC } from 'apache-arrow'
 
 type DbStatus = 'idle' | 'initializing' | 'ready' | 'error'
 type FileStatus = 'idle' | 'registering' | 'ready' | 'error'
+const QUERY_TIMEOUT_MS = 20000
 
 export default function useDuckDBClient() {
   const [status, setStatus] = useState<DbStatus>('idle')
@@ -14,6 +15,7 @@ export default function useDuckDBClient() {
 
   const workerRef = useRef<Worker | null>(null)
   const queryStartRef = useRef<number | null>(null)
+  const queryTimerRef = useRef<number | null>(null)
 
   useEffect(() => {
     setStatus('initializing')
@@ -29,6 +31,14 @@ export default function useDuckDBClient() {
 
     worker.onmessage = (evt: MessageEvent) => {
       const msg = evt.data
+
+      if (msg?.type === 'QUERY_SUCCESS' || msg?.type === 'QUERY_FAILURE') {
+        if (queryTimerRef.current) {
+          window.clearTimeout(queryTimerRef.current)
+          queryTimerRef.current = null
+        }
+      }
+
       switch (msg?.type) {
         case 'INIT_SUCCESS':
           clearTimeout(watchdog)
@@ -106,6 +116,7 @@ export default function useDuckDBClient() {
 
     return () => {
       clearTimeout(watchdog)
+      if (queryTimerRef.current) clearTimeout(queryTimerRef.current)
       workerRef.current?.terminate()
       workerRef.current = null
     }
@@ -120,11 +131,20 @@ export default function useDuckDBClient() {
 
   const runQuery = (sql: string) => {
     if (!workerRef.current) return
+
     setQueryError(null)
     setQueryResult([])
     setQueryExecutionTime(null)
-
     queryStartRef.current = performance.now()
+
+    if (queryTimerRef.current) window.clearTimeout(queryTimerRef.current)
+    
+    queryTimerRef.current = window.setTimeout(() => {
+      setQueryError('Query timed out')
+      const end = performance.now()
+      setQueryExecutionTime(end - (queryStartRef.current ?? end))
+      queryStartRef.current = null
+    }, QUERY_TIMEOUT_MS)
 
     workerRef.current.postMessage({ type: 'EXECUTE_QUERY', payload: sql })
   }

@@ -20,10 +20,10 @@ function App() {
   const [isRunning, setIsRunning] = useState(false)
 
   useEffect(() => {
-    if (isRunning && (queryResult.length > 0 || queryError !== null)) {
+    if (isRunning && (queryError !== null || queryExecutionTime !== null)) {
       setIsRunning(false)
     }
-  }, [isRunning, queryResult, queryError])
+  }, [isRunning, queryError, queryExecutionTime])
 
   const [sql, setSql] = useState<string>('SELECT * FROM source LIMIT 10;')
 
