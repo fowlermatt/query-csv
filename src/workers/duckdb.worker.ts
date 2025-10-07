@@ -38,33 +38,59 @@ self.addEventListener('message', async (evt: MessageEvent) => {
 
   switch (msg.type) {
     case 'REGISTER_FILE': {
-      try {
-        if (!db) return self.postMessage({ type: 'REGISTER_FAILURE', payload: 'Database not initialized' })
-        const file: File | undefined = msg.file
-        if (!file) return self.postMessage({ type: 'REGISTER_FAILURE', payload: 'No file provided' })
-
-        const VIRTUAL_NAME = 'source'
-        const lower = (file.name || '').toLowerCase()
-
-        if (lower.endsWith('.csv')) {
-          const text = await file.text()
-          await db.registerFileText(VIRTUAL_NAME, text)
-        } else if (lower.endsWith('.parquet')) {
-          const buf = new Uint8Array(await file.arrayBuffer())
-          await db.registerFileBuffer(VIRTUAL_NAME, buf)
-        } else {
-          return self.postMessage({
-            type: 'REGISTER_FAILURE',
-            payload: 'Unsupported file type (only .csv and .parquet)',
-          })
-        }
-
-        self.postMessage({ type: 'REGISTER_SUCCESS' })
-      } catch (e: any) {
-        self.postMessage({ type: 'REGISTER_FAILURE', payload: e?.message ?? String(e) })
-      }
-      break
+  try {
+    if (!db) {
+      self.postMessage({ type: 'REGISTER_FAILURE', payload: 'Database not initialized' })
+      return
     }
+    const file: File | undefined = msg.file
+    if (!file) {
+      self.postMessage({ type: 'REGISTER_FAILURE', payload: 'No file provided' })
+      return
+    }
+
+    const VIRTUAL_NAME = 'source'
+    const lower = (file.name || '').toLowerCase()
+
+    if (lower.endsWith('.csv')) {
+      const text = await file.text()
+      await db.registerFileText(VIRTUAL_NAME, text)
+    } else if (lower.endsWith('.parquet')) {
+      const buf = new Uint8Array(await file.arrayBuffer())
+      await db.registerFileBuffer(VIRTUAL_NAME, buf)
+    } else {
+      self.postMessage({
+        type: 'REGISTER_FAILURE',
+        payload: 'Unsupported file type (only .csv and .parquet)',
+      })
+      return
+    }
+
+    const conn = await db.connect()
+    try {
+      if (lower.endsWith('.csv')) {
+        await conn.query(`
+          DROP VIEW IF EXISTS source;
+          CREATE VIEW source AS
+          SELECT * FROM read_csv_auto('${VIRTUAL_NAME}', header=true);
+        `)
+      } else {
+        await conn.query(`
+          DROP VIEW IF EXISTS source;
+          CREATE VIEW source AS
+          SELECT * FROM parquet_scan('${VIRTUAL_NAME}');
+        `)
+      }
+    } finally {
+      await conn.close()
+    }
+
+    self.postMessage({ type: 'REGISTER_SUCCESS' })
+  } catch (e: any) {
+    self.postMessage({ type: 'REGISTER_FAILURE', payload: e?.message ?? String(e) })
+  }
+  break
+}
 
     case 'EXECUTE_QUERY': {
       if (!db) return self.postMessage({ type: 'QUERY_FAILURE', payload: 'Database not initialized' })
@@ -77,7 +103,6 @@ self.addEventListener('message', async (evt: MessageEvent) => {
 
         const duckdbTable = await conn.query(sql)
 
-        // Serialize to Arrow IPC (preferred fast path)
         const arrowBuffer: Uint8Array = tableToIPC(
           duckdbTable as unknown as ArrowTable,
           'stream'
@@ -92,7 +117,6 @@ self.addEventListener('message', async (evt: MessageEvent) => {
     }
 
     default:
-      // ignore
       break
   }
 })
