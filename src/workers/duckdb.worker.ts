@@ -4,7 +4,7 @@ import * as duckdb from '@duckdb/duckdb-wasm'
 import { tableToIPC, Table as ArrowTable } from 'apache-arrow'
 
 import duckdbWasmUrl from '@duckdb/duckdb-wasm/dist/duckdb-mvp.wasm?url'
-import duckdbBrowserWorkerUrl from '@duckdb/duckdb-wasm/dist/duckdb-browser-mvp.worker.js?url&inline'
+import duckdbBrowserWorkerUrl from '@duckdb/duckdb-wasm/dist/duckdb-browser-mvp.worker.js?url'
 let db: duckdb.AsyncDuckDB | null = null
 
 ;(async () => {
@@ -18,7 +18,7 @@ let db: duckdb.AsyncDuckDB | null = null
       return
     }
 
-    const internalWorker = new Worker(duckdbBrowserWorkerUrl)
+    const internalWorker = new Worker(duckdbBrowserWorkerUrl, { type: 'module' })
 
     const logger = new duckdb.ConsoleLogger()
     db = new duckdb.AsyncDuckDB(logger, internalWorker)
