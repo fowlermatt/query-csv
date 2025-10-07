@@ -20,10 +20,8 @@ let db: duckdb.AsyncDuckDB | null = null
     }
 
     const internalWorker = new Worker(duckdbBrowserWorkerUrl, { type: 'module' })
-
     const logger = new duckdb.ConsoleLogger()
     db = new duckdb.AsyncDuckDB(logger, internalWorker)
-
     await db.instantiate(duckdbWasmUrl)
 
     self.postMessage({ type: 'INIT_SUCCESS' })
@@ -40,19 +38,14 @@ self.addEventListener('message', async (evt: MessageEvent) => {
   switch (msg.type) {
     case 'REGISTER_FILE': {
       try {
-        if (!db) {
-          self.postMessage({ type: 'REGISTER_FAILURE', payload: 'Database not initialized' })
-          return
-        }
+        if (!db) return self.postMessage({ type: 'REGISTER_FAILURE', payload: 'Database not initialized' })
         const file: File | undefined = msg.file
-        if (!file) {
-          self.postMessage({ type: 'REGISTER_FAILURE', payload: 'No file provided' })
-          return
-        }
+        if (!file) return self.postMessage({ type: 'REGISTER_FAILURE', payload: 'No file provided' })
 
         const VIRTUAL_NAME = 'source'
         const lower = (file.name || '').toLowerCase()
 
+        // 1) Put file into DuckDB’s virtual FS
         if (lower.endsWith('.csv')) {
           const text = await file.text()
           await db.registerFileText(VIRTUAL_NAME, text)
@@ -60,27 +53,24 @@ self.addEventListener('message', async (evt: MessageEvent) => {
           const buf = new Uint8Array(await file.arrayBuffer())
           await db.registerFileBuffer(VIRTUAL_NAME, buf)
         } else {
-          self.postMessage({
+          return self.postMessage({
             type: 'REGISTER_FAILURE',
             payload: 'Unsupported file type (only .csv and .parquet)',
           })
-          return
         }
 
+        // 2) Create/replace a VIEW named `source` that scans that virtual file
         const conn = await db.connect()
         try {
+          await conn.query(`DROP VIEW IF EXISTS source`)
           if (lower.endsWith('.csv')) {
-            await conn.query(`
-              DROP VIEW IF EXISTS source;
-              CREATE VIEW source AS
-              SELECT * FROM read_csv_auto('${VIRTUAL_NAME}', header=true);
-            `)
+            await conn.query(
+              `CREATE VIEW source AS SELECT * FROM read_csv_auto('${VIRTUAL_NAME}', header=true)`
+            )
           } else {
-            await conn.query(`
-              DROP VIEW IF EXISTS source;
-              CREATE VIEW source AS
-              SELECT * FROM parquet_scan('${VIRTUAL_NAME}');
-            `)
+            await conn.query(
+              `CREATE VIEW source AS SELECT * FROM parquet_scan('${VIRTUAL_NAME}')`
+            )
           }
         } finally {
           await conn.close()
@@ -96,7 +86,9 @@ self.addEventListener('message', async (evt: MessageEvent) => {
     case 'EXECUTE_QUERY': {
       if (!db) return self.postMessage({ type: 'QUERY_FAILURE', payload: 'Database not initialized' })
       const sql: string | undefined = msg.payload
-      if (!sql) return self.postMessage({ type: 'QUERY_FAILURE', payload: 'No SQL provided' })
+      if (!sql || typeof sql !== 'string') {
+        return self.postMessage({ type: 'QUERY_FAILURE', payload: 'No SQL provided' })
+      }
 
       let conn: duckdb.AsyncDuckDBConnection | null = null
       try {
@@ -105,13 +97,30 @@ self.addEventListener('message', async (evt: MessageEvent) => {
         const table = await conn.query(sql)
         console.log('[duckdb.worker] exec got table with rows:', table.numRows)
 
+        let sent = false
         try {
           const { tableToIPC, Table: ArrowTable } = await import('apache-arrow')
-          const buf: Uint8Array = tableToIPC(table as unknown as InstanceType<typeof ArrowTable>, 'stream')
-          console.log('[duckdb.worker] exec posting QUERY_SUCCESS (arrow bytes):', buf.byteLength)
-          self.postMessage({ type: 'QUERY_SUCCESS', payload: buf }, [buf.buffer])
-        } catch (arrowErr: any) {
-          console.warn('[duckdb.worker] arrow serialize failed, falling back to JSON:', arrowErr)
+          let buf: Uint8Array = tableToIPC(
+            table as unknown as InstanceType<typeof ArrowTable>,
+            'file'
+          )
+          if (!buf || buf.byteLength === 0) {
+            buf = tableToIPC(
+              table as unknown as InstanceType<typeof ArrowTable>,
+              'stream'
+            )
+          }
+
+          if (buf && buf.byteLength > 0) {
+            console.log('[duckdb.worker] exec posting QUERY_SUCCESS (arrow bytes):', buf.byteLength)
+            self.postMessage({ type: 'QUERY_SUCCESS', payload: buf }, [buf.buffer])
+            sent = true
+          }
+        } catch (arrowErr) {
+          console.warn('[duckdb.worker] arrow serialize failed, will fall back to JSON:', arrowErr)
+        }
+
+        if (!sent) {
           const rows = table.toArray().map((r: any) => ({ ...r }))
           self.postMessage({ type: 'QUERY_SUCCESS_JSON', payload: rows })
         }
@@ -119,9 +128,7 @@ self.addEventListener('message', async (evt: MessageEvent) => {
         console.error('[duckdb.worker] exec error:', e)
         self.postMessage({ type: 'QUERY_FAILURE', payload: e?.message ?? String(e) })
       } finally {
-        try {
-          await conn?.close()
-        } catch {}
+        try { await conn?.close() } catch {}
       }
       break
     }

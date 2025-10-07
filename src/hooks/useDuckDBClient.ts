@@ -3,6 +3,7 @@ import { tableFromIPC } from 'apache-arrow'
 
 type DbStatus = 'idle' | 'initializing' | 'ready' | 'error'
 type FileStatus = 'idle' | 'registering' | 'ready' | 'error'
+
 const QUERY_TIMEOUT_MS = 20000
 
 export default function useDuckDBClient() {
@@ -32,7 +33,7 @@ export default function useDuckDBClient() {
     worker.onmessage = (evt: MessageEvent) => {
       const msg = evt.data
 
-      if (msg?.type === 'QUERY_SUCCESS' || msg?.type === 'QUERY_FAILURE') {
+      if (msg?.type === 'QUERY_SUCCESS' || msg?.type === 'QUERY_FAILURE' || msg?.type === 'QUERY_SUCCESS_JSON') {
         if (queryTimerRef.current) {
           window.clearTimeout(queryTimerRef.current)
           queryTimerRef.current = null
@@ -67,20 +68,9 @@ export default function useDuckDBClient() {
               msg.payload instanceof Uint8Array ? msg.payload : new Uint8Array(msg.payload)
 
             const table = tableFromIPC(arrowBuffer)
-            const numRows = table.numRows
-            const numCols = table.numCols
-
-            const vectors = Array.from({ length: numCols }, (_, i) => table.getChildAt(i))
-            const fieldNames = table.schema.fields.map((f, i) => f?.name ?? `col_${i}`)
-
             const rows: Record<string, unknown>[] = []
-            for (let r = 0; r < numRows; r++) {
-              const obj: Record<string, unknown> = {}
-              for (let c = 0; c < numCols; c++) {
-                const v = vectors[c]
-                obj[fieldNames[c]] = v ? v.get(r) : undefined
-              }
-              rows.push(obj)
+            for (let i = 0; i < table.numRows; i++) {
+                rows.push(table.get(i)!.toJSON())
             }
 
             setQueryResult(rows)
@@ -89,6 +79,18 @@ export default function useDuckDBClient() {
             setQueryError(e?.message ?? String(e))
             setQueryResult([])
           }
+          break
+        }
+
+        case 'QUERY_SUCCESS_JSON': {
+          const end = performance.now()
+          const start = queryStartRef.current ?? end
+          setQueryExecutionTime(end - start)
+          queryStartRef.current = null
+
+          const rows = Array.isArray(msg.payload) ? (msg.payload as Record<string, unknown>[]) : []
+          setQueryResult(rows)
+          setQueryError(null)
           break
         }
 
@@ -152,7 +154,6 @@ export default function useDuckDBClient() {
   return {
     status,
     fileStatus,
-    worker: workerRef.current,
     registerFile,
     runQuery,
     queryResult,
