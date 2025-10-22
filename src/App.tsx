@@ -7,6 +7,9 @@ import useDuckDB from './hooks/useDuckDBClient'
 import Analytics from './components/Analytics'
 import useLocalStorage from './hooks/useLocalStorage'
 
+import { SQLEditor } from './components/SQLEditor'
+import { SchemaPanel } from './components/SchemaPanel'
+
 function App() {
   const {
     status,
@@ -16,6 +19,9 @@ function App() {
     queryResult,
     queryError,
     queryExecutionTime,
+
+    schema,
+    getSchema,
   } = useDuckDB()
 
   const [isRunning, setIsRunning] = useState(false)
@@ -28,6 +34,12 @@ function App() {
       setIsRunning(false)
     }
   }, [isRunning, queryError, queryExecutionTime])
+
+  useEffect(() => {
+    if (status === 'ready') {
+      getSchema?.()
+    }
+  }, [status, getSchema])
 
   const handleFileSelect = useCallback(
     (file: File) => {
@@ -172,181 +184,193 @@ function App() {
       </main>
     )
   } else {
+    // READY: show SchemaPanel + Monaco editor + actions + results
     content = (
       <main
         style={{
           minHeight: '100vh',
-          display: 'grid',
-          placeItems: 'center',
           fontFamily: 'system-ui, -apple-system, Segoe UI, Roboto, Inter, sans-serif',
-          padding: 24,
+          padding: 16,
         }}
       >
-        <div style={{ width: 'min(1100px, 94vw)' }}>
+        <div style={{ width: 'min(1200px, 96vw)', margin: '0 auto' }}>
           <h1 style={{ fontSize: '1.5rem', marginBottom: 8 }}>In-browser Query Tool</h1>
 
-          <div style={{ marginTop: 16, display: 'grid', gap: 8 }}>
-            <label>
-              <span style={{ fontWeight: 600, display: 'block', marginBottom: 4 }}>SQL Query</span>
-              <textarea
-                value={sql}
-                onChange={(e) => setSql(e.target.value)}
-                placeholder="Write a SQL query…"
-                rows={8}
-                style={{
-                  width: '100%',
-                  fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
-                  fontSize: 14,
-                  padding: 12,
-                }}
-              />
-            </label>
-
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-              <button
-                type="button"
-                onClick={handleRunQuery}
-                disabled={isRunning || status !== 'ready'}
-                style={{
-                  padding: '10px 14px',
-                  borderRadius: 8,
-                  border: '1px solid #ddd',
-                  background: isRunning ? '#eee' : '#f8f8f8',
-                  cursor: isRunning ? 'not-allowed' : 'pointer',
-                  fontWeight: 600,
-                  width: 'fit-content',
-                  opacity: isRunning ? 0.7 : 1,
-                }}
-              >
-                {isRunning ? 'Running…' : 'Run Query'}
-              </button>
-
-              <button
-                type="button"
-                onClick={handleCopyResults}
-                disabled={!queryResult || queryResult.length === 0}
-                style={{
-                  padding: '10px 14px',
-                  borderRadius: 8,
-                  border: '1px solid #ddd',
-                  background: '#f8f8f8',
-                  cursor: !queryResult || queryResult.length === 0 ? 'not-allowed' : 'pointer',
-                  width: 'fit-content',
-                }}
-                title="Copy results (CSV) to clipboard"
-              >
-                Copy Results (CSV)
-              </button>
-
-              <button
-                type="button"
-                onClick={handleExportCSV}
-                disabled={!queryResult || queryResult.length === 0}
-                style={{
-                  padding: '10px 14px',
-                  borderRadius: 8,
-                  border: '1px solid #ddd',
-                  background: '#f8f8f8',
-                  cursor: !queryResult || queryResult.length === 0 ? 'not-allowed' : 'pointer',
-                  width: 'fit-content',
-                }}
-                title="Download results as CSV"
-              >
-                Export CSV
-              </button>
-            </div>
-
-            <style>
-              {`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}
-            </style>
-          </div>
-
-          <div style={{ marginTop: 12 }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <h2 style={{ fontSize: 16, margin: 0 }}>Query History</h2>
-              <button
-                type="button"
-                onClick={() => setHistory([])}
-                disabled={history.length === 0}
-                style={{
-                  padding: '6px 10px',
-                  borderRadius: 6,
-                  border: '1px solid #ddd',
-                  background: '#fafafa',
-                  cursor: history.length === 0 ? 'not-allowed' : 'pointer',
-                }}
-              >
-                Clear
-              </button>
-            </div>
-            {history.length === 0 ? (
-              <p style={{ color: '#6b7280', marginTop: 6, fontSize: 13 }}>
-                No queries yet. Run a query to save it here.
-              </p>
-            ) : (
-              <ul style={{ listStyle: 'none', padding: 0, marginTop: 6, display: 'grid', gap: 6 }}>
-                {history.map((q, idx) => (
-                  <li key={idx}>
-                    <button
-                      type="button"
-                      onClick={() => setSql(q)}
-                      title="Click to load this query"
-                      style={{
-                        width: '100%',
-                        textAlign: 'left',
-                        padding: '8px 10px',
-                        borderRadius: 8,
-                        border: '1px solid #e5e7eb',
-                        background: '#fff',
-                        fontFamily:
-                          'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
-                        fontSize: 12,
-                        whiteSpace: 'nowrap',
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                      }}
-                    >
-                      {q}
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-
-          {queryError && (
-            <div
-              role="alert"
-              style={{
-                marginTop: 16,
-                padding: 12,
-                borderRadius: 8,
-                border: '1px solid #dc2626',
-                background: '#fff1f2',
-                color: '#b91c1c',
-                fontWeight: 600,
+          <div style={{ display: 'grid', gridTemplateColumns: '280px 1fr', gap: 12, alignItems: 'start' }}>
+            <SchemaPanel
+              schema={schema ?? []}
+              onInsert={(snippet) => {
+                setSql((s) => (s.endsWith('\n') ? s + snippet : s + '\n' + snippet))
               }}
-            >
-              <div style={{ marginBottom: 4 }}>Query Error</div>
-              <div style={{ fontWeight: 400 }}>{queryError}</div>
-            </div>
-          )}
+            />
 
-          {queryResult && (
-            <div style={{ marginTop: 16, display: 'grid', gap: 12 }}>
-              <div style={{ fontSize: 14, color: '#374151' }}>
-                <strong>Rows:</strong> {queryResult.length}
-                {typeof queryExecutionTime === 'number' && (
-                  <>
-                    {'  ·  '}
-                    <strong>Execution Time:</strong> {queryExecutionTime.toFixed(2)} ms
-                  </>
+            <div style={{ display: 'grid', gap: 12 }}>
+              {/* Monaco SQL Editor */}
+              <div>
+                <div style={{ fontWeight: 600, marginBottom: 6 }}>SQL Query</div>
+                <SQLEditor
+                  value={sql}
+                  onChange={setSql}
+                  onRun={() => handleRunQuery()}
+                  schema={schema ?? []}
+                />
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                <button
+                  type="button"
+                  onClick={handleRunQuery}
+                  disabled={isRunning || status !== 'ready'}
+                  style={{
+                    padding: '10px 14px',
+                    borderRadius: 8,
+                    border: '1px solid #ddd',
+                    background: isRunning ? '#eee' : '#f8f8f8',
+                    cursor: isRunning ? 'not-allowed' : 'pointer',
+                    fontWeight: 600,
+                    width: 'fit-content',
+                    opacity: isRunning ? 0.7 : 1,
+                  }}
+                >
+                  {isRunning ? 'Running…' : 'Run Query'}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleCopyResults}
+                  disabled={!queryResult || queryResult.length === 0}
+                  style={{
+                    padding: '10px 14px',
+                    borderRadius: 8,
+                    border: '1px solid #ddd',
+                    background: '#f8f8f8',
+                    cursor: !queryResult || queryResult.length === 0 ? 'not-allowed' : 'pointer',
+                    width: 'fit-content',
+                  }}
+                  title="Copy results (CSV) to clipboard"
+                >
+                  Copy Results (CSV)
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleExportCSV}
+                  disabled={!queryResult || queryResult.length === 0}
+                  style={{
+                    padding: '10px 14px',
+                    borderRadius: 8,
+                    border: '1px solid #ddd',
+                    background: '#f8f8f8',
+                    cursor: !queryResult || queryResult.length === 0 ? 'not-allowed' : 'pointer',
+                    width: 'fit-content',
+                  }}
+                  title="Download results as CSV"
+                >
+                  Export CSV
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => getSchema?.()}
+                  style={{
+                    padding: '10px 14px',
+                    borderRadius: 8,
+                    border: '1px solid #ddd',
+                    background: '#fafafa',
+                    width: 'fit-content',
+                  }}
+                  title="Refresh schema from DuckDB"
+                >
+                  Refresh Schema
+                </button>
+              </div>
+
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <h2 style={{ fontSize: 16, margin: 0 }}>Query History</h2>
+                  <button
+                    type="button"
+                    onClick={() => setHistory([])}
+                    disabled={history.length === 0}
+                    style={{
+                      padding: '6px 10px',
+                      borderRadius: 6,
+                      border: '1px solid #ddd',
+                      background: '#fafafa',
+                      cursor: history.length === 0 ? 'not-allowed' : 'pointer',
+                    }}
+                  >
+                    Clear
+                  </button>
+                </div>
+                {history.length === 0 ? (
+                  <p style={{ color: '#6b7280', marginTop: 6, fontSize: 13 }}>
+                    No queries yet. Run a query to save it here.
+                  </p>
+                ) : (
+                  <ul style={{ listStyle: 'none', padding: 0, marginTop: 6, display: 'grid', gap: 6 }}>
+                    {history.map((q, idx) => (
+                      <li key={idx}>
+                        <button
+                          type="button"
+                          onClick={() => setSql(q)}
+                          title="Click to load this query"
+                          style={{
+                            width: '100%',
+                            textAlign: 'left',
+                            padding: '8px 10px',
+                            borderRadius: 8,
+                            border: '1px solid #e5e7eb',
+                            background: '#fff',
+                            fontFamily:
+                              'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
+                            fontSize: 12,
+                            whiteSpace: 'nowrap',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                          }}
+                        >
+                          {q}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
                 )}
               </div>
 
-              {queryResult.length > 0 && <ResultsTable columns={columns} data={queryResult} />}
+              {queryError && (
+                <div
+                  role="alert"
+                  style={{
+                    marginTop: 4,
+                    padding: 12,
+                    borderRadius: 8,
+                    border: '1px solid #dc2626',
+                    background: '#fff1f2',
+                    color: '#b91c1c',
+                    fontWeight: 600,
+                  }}
+                >
+                  <div style={{ marginBottom: 4 }}>Query Error</div>
+                  <div style={{ fontWeight: 400 }}>{queryError}</div>
+                </div>
+              )}
+
+              <div style={{ display: 'grid', gap: 12 }}>
+                <div style={{ fontSize: 14, color: '#374151' }}>
+                  <strong>Rows:</strong> {queryResult.length}
+                  {typeof queryExecutionTime === 'number' && (
+                    <>
+                      {'  ·  '}
+                      <strong>Execution Time:</strong> {queryExecutionTime.toFixed(2)} ms
+                    </>
+                  )}
+                </div>
+
+                {queryResult.length > 0 && <ResultsTable columns={columns} data={queryResult} />}
+              </div>
             </div>
-          )}
+          </div>
         </div>
       </main>
     )

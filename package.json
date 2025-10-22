@@ -12,8 +12,10 @@
   },
   "dependencies": {
     "@duckdb/duckdb-wasm": "^1.30.0",
+    "@monaco-editor/react": "^4.7.0",
     "@tanstack/react-table": "^8.21.3",
     "@tanstack/react-virtual": "^3.13.12",
+    "monaco-editor": "^0.54.0",
     "react": "^19.1.1",
     "react-dom": "^19.1.1"
   },

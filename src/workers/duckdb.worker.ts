@@ -1,13 +1,14 @@
 /// <reference lib="webworker" />
 
 import * as duckdb from '@duckdb/duckdb-wasm'
-
 import duckdbWasmUrl from '@duckdb/duckdb-wasm/dist/duckdb-eh.wasm?url'
 import duckdbBrowserWorkerUrl from '@duckdb/duckdb-wasm/dist/duckdb-browser-eh.worker.js?url'
 
+import type { TableSchema } from './contracts.ts'
+
+
 let db: duckdb.AsyncDuckDB | null = null
 
-// Initialize the DuckDB worker
 ;(async () => {
   try {
     const head = await fetch(duckdbWasmUrl, { method: 'HEAD' })
@@ -30,7 +31,42 @@ let db: duckdb.AsyncDuckDB | null = null
   }
 })()
 
-// Listen for messages from the main thread
+async function fetchFullSchema(): Promise<TableSchema[]> {
+  if (!db) throw new Error('Database not initialized')
+  const conn = await db.connect()
+  try {
+    const sql = `
+      SELECT table_name AS table,
+             column_name AS name,
+             data_type   AS type,
+             is_nullable AS nullable
+      FROM information_schema.columns
+      WHERE table_schema = 'main'
+      ORDER BY table_name, ordinal_position;
+    `
+    const table = await conn.query(sql)
+
+    const rows: any[] = (table as any)?.toArray ? (table as any).toArray() : (table as any)
+
+    const byTable = new Map<string, TableSchema>()
+    for (const r of rows) {
+      const t = String(r.table)
+      const entry = byTable.get(t) ?? { table: t, columns: [] }
+      entry.columns.push({
+        name: String(r.name),
+        type: String(r.type),
+        nullable: String(r.nullable).toLowerCase() === 'yes',
+      })
+      byTable.set(t, entry)
+    }
+    return [...byTable.values()]
+  } finally {
+    try {
+      await conn.close()
+    } catch {}
+  }
+}
+
 self.addEventListener('message', async (evt: MessageEvent) => {
   const msg = evt.data
   if (!msg || typeof msg !== 'object') return
@@ -45,7 +81,6 @@ self.addEventListener('message', async (evt: MessageEvent) => {
         const VIRTUAL_NAME = 'source'
         const lower = (file.name || '').toLowerCase()
 
-        // 1) Put file into DuckDB’s virtual FS
         if (lower.endsWith('.csv')) {
           const text = await file.text()
           await db.registerFileText(VIRTUAL_NAME, text)
@@ -59,7 +94,6 @@ self.addEventListener('message', async (evt: MessageEvent) => {
           })
         }
 
-        // 2) Create/replace a VIEW named `source` that scans that virtual file
         const conn = await db.connect()
         try {
           await conn.query(`DROP VIEW IF EXISTS source`)
@@ -73,7 +107,7 @@ self.addEventListener('message', async (evt: MessageEvent) => {
             )
           }
         } finally {
-          await conn.close()
+          try { await conn.close() } catch {}
         }
 
         self.postMessage({ type: 'REGISTER_SUCCESS' })
@@ -95,7 +129,7 @@ self.addEventListener('message', async (evt: MessageEvent) => {
         console.log('[duckdb.worker] exec start:', sql)
         conn = await db.connect()
         const table = await conn.query(sql)
-        console.log('[duckdb.worker] exec got table with rows:', table.numRows)
+        console.log('[duckdb.worker] exec got table with rows:', (table as any).numRows ?? 'unknown')
 
         let sent = false
         try {
@@ -121,7 +155,7 @@ self.addEventListener('message', async (evt: MessageEvent) => {
         }
 
         if (!sent) {
-          const rows = table.toArray().map((r: any) => ({ ...r }))
+          const rows = (table as any).toArray ? (table as any).toArray().map((r: any) => ({ ...r })) : []
           self.postMessage({ type: 'QUERY_SUCCESS_JSON', payload: rows })
         }
       } catch (e: any) {
@@ -129,6 +163,17 @@ self.addEventListener('message', async (evt: MessageEvent) => {
         self.postMessage({ type: 'QUERY_FAILURE', payload: e?.message ?? String(e) })
       } finally {
         try { await conn?.close() } catch {}
+      }
+      break
+    }
+
+    case 'GET_SCHEMA': {
+      if (!db) return self.postMessage({ type: 'SCHEMA_FAILURE', payload: 'Database not initialized' })
+      try {
+        const tables = await fetchFullSchema()
+        self.postMessage({ type: 'SCHEMA_SUCCESS', payload: tables })
+      } catch (e: any) {
+        self.postMessage({ type: 'SCHEMA_FAILURE', payload: e?.message ?? String(e) })
       }
       break
     }
