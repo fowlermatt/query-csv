@@ -1,73 +1,100 @@
-# React + TypeScript + Vite
+# QueryBox 📊
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+> **In-Browser SQL Query Engine & Data Visualization Tool**
 
-Currently, two official plugins are available:
+QueryBox is a high-performance, serverless SQL sandbox that enables users to execute analytical queries on local datasets (CSV and Parquet) directly within the browser. 
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+By leveraging **DuckDB-WASM** and **Web Workers**, QueryBox moves heavy computation off the main thread, ensuring a buttery-smooth UI even when processing large datasets. It features a zero-copy data architecture using **Apache Arrow**, eliminating serialization overhead.
 
-## React Compiler
+---
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## 🚀 Key Features
 
-## Expanding the ESLint configuration
+* **Serverless SQL Execution:** Run full SQL queries on local files without uploading data to a backend.
+* **High-Performance Architecture:** Non-blocking query execution using Web Workers.
+* **Format Support:** Native support for `.csv` and `.parquet` files.
+* **Virtualized Rendering:** Efficiently displays result sets of 10,000+ rows using TanStack Table + react-virtual.
+* **Persistent Workflow:** Implemented persistent query history using `localStorage` to save user sessions.
+* **Data Export:** Export results to CSV or copy directly to the clipboard.
+* **Telemetry:** Integrated **Plausible Analytics** for privacy-friendly usage tracking.
+* **Privacy First:** All data processing happens locally on the client machine; no data is sent to a server.
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+---
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+## 🛠 Tech Stack
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+* **Frontend:** React, TypeScript, Vite
+* **Engine:** DuckDB-WASM
+* **Data Transport:** Apache Arrow (IPC Buffers)
+* **Concurrency:** Web Workers
+* **UI/Visualization:** TanStack Table, react-virtual
+* **Analytics:** Plausible Analytics
+* **Deployment:** Vercel
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+---
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+## 🏗 Architecture & Engineering
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+This project was built to solve specific frontend performance bottlenecks associated with browser-based data processing.
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+### 1. Off-Main-Thread Execution (Web Workers)
+Designed a Web Worker architecture for parallel query execution. The DuckDB instance runs entirely on a background thread, maintaining a responsive React interface even during heavy computational tasks.
+
+### 2. Zero-Copy Data Transfer (Apache Arrow)
+Optimized data transfer between threads using **Apache Arrow IPC buffers**. 
+* The Worker generates an Arrow Table.
+* The memory ownership is transferred (not copied) to the Main Thread.
+* This results in zero-copy communication and significantly improved performance.
+
+### 3. DOM Virtualization
+Built a virtualized results table with **TanStack Table** and **react-virtual**. This allows the application to handle over 10,000 rows efficiently by only rendering the DOM nodes currently visible in the viewport.
+
+### System Flow
+```mermaid
+sequenceDiagram
+    participant User
+    participant React_UI as React Main Thread
+    participant Worker as Web Worker (DuckDB)
+    
+    User->>React_UI: Uploads CSV/Parquet
+    React_UI->>Worker: Send File Buffer
+    Worker->>Worker: Register Table
+    User->>React_UI: Types "SELECT * FROM data"
+    React_UI->>Worker: Post Message (Query)
+    Worker->>Worker: Execute SQL
+    Worker->>React_UI: Return Apache Arrow Buffer (Zero-Copy)
+    React_UI->>User: Render Virtualized Table
+ ```
+## 🎯 Key Skills Demonstrated
+
+* **Frontend Performance Optimization:** Implementing virtualization and zero-copy data transfer to handle large datasets in the browser.
+* **Browser-Based Data Processing:** Utilizing WASM (WebAssembly) to run high-performance backend logic (DuckDB) on the client side.
+* **SQL Engine Integration:** Architecting a client-side engine that interfaces directly with raw file buffers.
+* **Scalable TypeScript Architecture:** Structured a robust codebase capable of handling asynchronous worker communication and complex state management.
+
+---
+
+## ⚡ Getting Started
+
+| Project | Live Demo |
+| :--- | :--- |
+| **QueryCSV** | [QueryCSV](https://querycsv.vercel.app) |
+
+---
+
+## 🧪 Usage
+
+1.  Click **"Load File"** to select a local CSV or Parquet file.
+2.  The file is automatically registered as a table (e.g., `my_data`).
+3.  Type standard SQL into the editor:
+    ```sql
+    SELECT * FROM my_data WHERE value > 100 ORDER BY date DESC LIMIT 50;
+    ```
+4.  Hit **Run** (or `Ctrl + Enter`).
+5.  View results in the virtualized grid or download as CSV.
+
+---
+
+## 📄 License
+
+Distributed under the MIT License. See `LICENSE` for more information.
