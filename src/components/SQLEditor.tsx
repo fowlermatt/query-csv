@@ -86,23 +86,25 @@ export const SQLEditor: React.FC<Props> = ({ value, onChange, onRun, schema }) =
   }, []);
 
   return (
-    <div style={{ border: "1px solid #e5e7eb", borderRadius: 8, overflow: "hidden" }}>
-      <Editor
-        height="220px"
-        defaultLanguage="sql"
-        value={value}
-        onChange={(v) => onChange(v ?? "")}
-        onMount={onMount}
-        options={{
-          fontSize: 13,
-          minimap: { enabled: false },
-          scrollBeyondLastLine: false,
-          wordWrap: "on",
-          tabSize: 2,
-          renderWhitespace: "selection",
-          automaticLayout: true,
-        }}
-      />
+    <div style={{ border: "1px solid #e5e7eb", borderRadius: 8, overflow: "hidden", maxWidth: "100%", minWidth: 0, width: "100%" }}>
+      <div style={{ width: "100%", maxWidth: "100%", overflow: "hidden" }}>
+        <Editor
+          height="220px"
+          defaultLanguage="sql"
+          value={value}
+          onChange={(v) => onChange(v ?? "")}
+          onMount={onMount}
+          options={{
+            fontSize: 13,
+            minimap: { enabled: false },
+            scrollBeyondLastLine: false,
+            wordWrap: "on",
+            tabSize: 2,
+            renderWhitespace: "selection",
+            automaticLayout: true,
+          }}
+        />
+      </div>
       <div style={{ display: "flex", justifyContent: "space-between", padding: 8, background: "#fafafa", borderTop: "1px solid #e5e7eb" }}>
         <div style={{ color: "#6b7280", fontSize: 12 }}>Tip: Run with ⌘/Ctrl + Enter</div>
         <button

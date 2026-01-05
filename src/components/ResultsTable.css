@@ -14,6 +14,8 @@
   overflow: hidden;
   background-color: var(--surface);
   color: var(--text);
+  max-width: 100%;
+  min-width: 0;
 }
 
 .table-header {
@@ -22,6 +24,8 @@
   z-index: 1;
   background-color: var(--header-bg);
   border-bottom: 1px solid var(--border);
+  overflow: hidden;
+  min-width: 0;
 }
 
 .table-header-row {
@@ -30,11 +34,15 @@
   padding: 8px 12px;
   font-weight: 600;
   font-size: 12px;
+  min-width: 0;
 }
 
 .table-header-cell {
   white-space: nowrap;
   text-transform: capitalize;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
 }
 
 .table-body {
@@ -43,6 +51,7 @@
   position: relative;
   font-size: 13px;
   line-height: 1.4;
+  min-width: 0;
 }
 
 .table-row {
@@ -57,6 +66,7 @@
   display: grid;
   gap: 0;
   padding: 8px 12px;
+  min-width: 0;
 }
 
 .table-cell {

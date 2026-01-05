@@ -22,6 +22,7 @@ function App() {
     progress,
 
     schema,
+    schemaLoading,
     getSchema,
   } = useDuckDB()
 
@@ -36,11 +37,6 @@ function App() {
     }
   }, [isRunning, queryError, queryExecutionTime])
 
-  useEffect(() => {
-    if (status === 'ready') {
-      getSchema?.()
-    }
-  }, [status, getSchema])
 
   const handleFileSelect = useCallback(
     (file: File) => {
@@ -201,20 +197,21 @@ function App() {
           padding: 16,
         }}
       >
-        <div style={{ width: 'min(1200px, 96vw)', margin: '0 auto' }}>
+        <div style={{ width: 'min(1200px, 96vw)', margin: '0 auto', overflowX: 'hidden' }}>
           <h1 style={{ fontSize: '1.5rem', marginBottom: 8 }}>In-browser Query Tool</h1>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '280px 1fr', gap: 12, alignItems: 'start' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '280px minmax(0, 1fr)', gap: 12, alignItems: 'start' }}>
             <SchemaPanel
               schema={schema ?? []}
+              isLoading={schemaLoading}
               onInsert={(snippet) => {
                 setSql((s) => (s.endsWith('\n') ? s + snippet : s + '\n' + snippet))
               }}
             />
 
-            <div style={{ display: 'grid', gap: 12 }}>
+            <div style={{ display: 'grid', gap: 12, minWidth: 0 }}>
               {/* Monaco SQL Editor */}
-              <div>
+              <div style={{ minWidth: 0, maxWidth: '100%' }}>
                 <div style={{ fontWeight: 600, marginBottom: 6 }}>SQL Query</div>
                 <SQLEditor
                   value={sql}
@@ -293,7 +290,7 @@ function App() {
                 </button>
               </div>
 
-              <div>
+              <div style={{ minWidth: 0, maxWidth: '100%' }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                   <h2 style={{ fontSize: 16, margin: 0 }}>Query History</h2>
                   <button
@@ -316,7 +313,7 @@ function App() {
                     No queries yet. Run a query to save it here.
                   </p>
                 ) : (
-                  <ul style={{ listStyle: 'none', padding: 0, marginTop: 6, display: 'grid', gap: 6 }}>
+                  <ul style={{ listStyle: 'none', padding: 0, marginTop: 6, display: 'grid', gap: 6, maxWidth: '100%', minWidth: 0 }}>
                     {history.map((q, idx) => (
                       <li key={idx}>
                         <button
@@ -325,6 +322,8 @@ function App() {
                           title="Click to load this query"
                           style={{
                             width: '100%',
+                            maxWidth: '100%',
+                            minWidth: 0,
                             textAlign: 'left',
                             padding: '8px 10px',
                             borderRadius: 8,
@@ -334,8 +333,9 @@ function App() {
                               'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
                             fontSize: 12,
                             whiteSpace: 'nowrap',
-                            overflow: 'hidden',
-                            textOverflow: 'ellipsis',
+                            overflowX: 'auto',
+                            overflowY: 'hidden',
+                            display: 'block',
                           }}
                         >
                           {q}

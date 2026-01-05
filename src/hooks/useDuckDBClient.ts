@@ -20,6 +20,7 @@ export default function useDuckDBClient() {
 
   const [schema, setSchema] = useState<TableSchema[]>([])
   const [schemaError, setSchemaError] = useState<string | null>(null)
+  const [schemaLoading, setSchemaLoading] = useState<boolean>(true)
 
   const workerRef = useRef<Worker | null>(null)
   const queryStartRef = useRef<number | null>(null)
@@ -58,6 +59,7 @@ export default function useDuckDBClient() {
           setProgress(100)
           setStatus('ready')
           // NEW: fetch initial schema snapshot
+          setSchemaLoading(true)
           workerRef.current?.postMessage({ type: 'GET_SCHEMA' })
           break
         }
@@ -71,6 +73,7 @@ export default function useDuckDBClient() {
           console.timeEnd('Ingest') // End timing when worker confirms table is registered
           setFileStatus('ready')
           // NEW: refresh schema shortly after registering file/view
+          setSchemaLoading(true)
           setTimeout(() => workerRef.current?.postMessage({ type: 'GET_SCHEMA' }), 50)
           break
         }
@@ -85,11 +88,13 @@ export default function useDuckDBClient() {
           const tables = Array.isArray(msg.payload) ? (msg.payload as TableSchema[]) : []
           setSchema(tables)
           setSchemaError(null)
+          setSchemaLoading(false)
           break
         }
         case 'SCHEMA_FAILURE': {
           setSchema([])
           setSchemaError(typeof msg?.payload === 'string' ? msg.payload : 'Failed to load schema')
+          setSchemaLoading(false)
           break
         }
 
@@ -201,7 +206,10 @@ export default function useDuckDBClient() {
     workerRef.current.postMessage({ type: 'EXECUTE_QUERY', payload: sql })
   }
 
-  const getSchema = () => workerRef.current?.postMessage({ type: 'GET_SCHEMA' })
+  const getSchema = () => {
+    setSchemaLoading(true)
+    workerRef.current?.postMessage({ type: 'GET_SCHEMA' })
+  }
 
   const tableNames = useMemo(() => schema.map(s => s.table), [schema])
   const columnNames = useMemo(
@@ -225,6 +233,7 @@ export default function useDuckDBClient() {
     // schema
     schema,
     schemaError,
+    schemaLoading,
     getSchema,
     tableNames,
     columnNames,
