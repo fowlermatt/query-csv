@@ -19,6 +19,7 @@ function App() {
     queryResult,
     queryError,
     queryExecutionTime,
+    progress,
 
     schema,
     getSchema,
@@ -122,22 +123,29 @@ function App() {
           padding: 24,
         }}
       >
-        <div style={{ textAlign: 'center', color: '#374151' }}>
+        <div style={{ textAlign: 'center', color: '#374151', width: 'min(300px, 80vw)' }}>
+          <p style={{ fontWeight: 600, marginBottom: 16 }}>
+            Initializing Database... {progress}%
+          </p>
           <div
             style={{
-              width: 20,
-              height: 20,
-              borderRadius: '50%',
-              border: '3px solid #e5e7eb',
-              borderTopColor: '#6b7280',
-              margin: '0 auto 12px',
-              animation: 'spin 0.8s linear infinite',
+              width: '100%',
+              height: 8,
+              backgroundColor: '#e5e7eb',
+              borderRadius: 4,
+              overflow: 'hidden',
             }}
-          />
-          <p style={{ fontWeight: 600 }}>Initializing Database...</p>
-          <style>
-            {`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}
-          </style>
+          >
+            <div
+              style={{
+                width: `${progress}%`,
+                height: '100%',
+                backgroundColor: '#6b7280',
+                borderRadius: 4,
+                transition: 'width 0.15s ease-out',
+              }}
+            />
+          </div>
         </div>
       </main>
     )

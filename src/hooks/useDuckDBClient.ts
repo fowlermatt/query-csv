@@ -12,6 +12,7 @@ type TableSchema = { table: string; columns: TableColumn[] }
 export default function useDuckDBClient() {
   const [status, setStatus] = useState<DbStatus>('idle')
   const [fileStatus, setFileStatus] = useState<FileStatus>('idle')
+  const [progress, setProgress] = useState<number>(0)
 
   const [queryResult, setQueryResult] = useState<Record<string, unknown>[]>([])
   const [queryError, setQueryError] = useState<string | null>(null)
@@ -47,8 +48,14 @@ export default function useDuckDBClient() {
       }
 
       switch (msg?.type) {
+        case 'INIT_PROGRESS': {
+          const value = typeof msg.payload === 'number' ? msg.payload : 0
+          setProgress(Math.min(100, Math.max(0, value)))
+          break
+        }
         case 'INIT_SUCCESS': {
           clearTimeout(watchdog)
+          setProgress(100)
           setStatus('ready')
           // NEW: fetch initial schema snapshot
           workerRef.current?.postMessage({ type: 'GET_SCHEMA' })
@@ -195,7 +202,10 @@ export default function useDuckDBClient() {
     queryError,
     queryExecutionTime,
 
-    // new
+    // progress
+    progress,
+
+    // schema
     schema,
     schemaError,
     getSchema,

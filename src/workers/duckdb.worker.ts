@@ -1,29 +1,85 @@
 /// <reference lib="webworker" />
 
 import * as duckdb from '@duckdb/duckdb-wasm'
-import duckdbWasmUrl from '@duckdb/duckdb-wasm/dist/duckdb-eh.wasm?url'
-import duckdbBrowserWorkerUrl from '@duckdb/duckdb-wasm/dist/duckdb-browser-eh.worker.js?url'
 
 import type { TableSchema } from './contracts.ts'
 
+// Manual bundles pointing to local files served from public/duckdb-wasm
+const MANUAL_BUNDLES: duckdb.DuckDBBundles = {
+  mvp: {
+    mainModule: '/duckdb-wasm/duckdb-mvp.wasm',
+    mainWorker: '/duckdb-wasm/duckdb-browser-mvp.worker.js',
+  },
+  eh: {
+    mainModule: '/duckdb-wasm/duckdb-eh.wasm',
+    mainWorker: '/duckdb-wasm/duckdb-browser-eh.worker.js',
+  },
+}
 
 let db: duckdb.AsyncDuckDB | null = null
+let wasmBlobUrl: string | null = null
+
+async function fetchWithProgress(url: string): Promise<Blob> {
+  const response = await fetch(url)
+  if (!response.ok) {
+    throw new Error(`Failed to fetch ${url}: ${response.status}`)
+  }
+
+  const contentLength = response.headers.get('Content-Length')
+  const total = contentLength ? parseInt(contentLength, 10) : 0
+
+  if (!response.body) {
+    // Fallback if ReadableStream not available
+    const blob = await response.blob()
+    self.postMessage({ type: 'INIT_PROGRESS', payload: 100 })
+    return blob
+  }
+
+  const reader = response.body.getReader()
+  const chunks: Uint8Array[] = []
+  let received = 0
+
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+
+    chunks.push(value)
+    received += value.length
+
+    if (total > 0) {
+      const progress = Math.round((received / total) * 100)
+      self.postMessage({ type: 'INIT_PROGRESS', payload: progress })
+    }
+  }
+
+  // Combine chunks into a single Uint8Array
+  const combined = new Uint8Array(received)
+  let offset = 0
+  for (const chunk of chunks) {
+    combined.set(chunk, offset)
+    offset += chunk.length
+  }
+
+  return new Blob([combined], { type: 'application/wasm' })
+}
 
 ;(async () => {
   try {
-    const head = await fetch(duckdbWasmUrl, { method: 'HEAD' })
-    if (!head.ok) {
-      self.postMessage({
-        type: 'INIT_ERROR',
-        error: `WASM not reachable (${head.status}) at ${duckdbWasmUrl}`,
-      })
-      return
-    }
+    // Select the best bundle for the current browser
+    const bundle = await duckdb.selectBundle(MANUAL_BUNDLES)
 
-    const internalWorker = new Worker(duckdbBrowserWorkerUrl, { type: 'module' })
+    const mainModuleUrl = bundle.mainModule
+    const mainWorkerUrl = bundle.mainWorker!
+
+    // Fetch WASM with progress reporting
+    self.postMessage({ type: 'INIT_PROGRESS', payload: 0 })
+    const wasmBlob = await fetchWithProgress(mainModuleUrl)
+    wasmBlobUrl = URL.createObjectURL(wasmBlob)
+
+    const internalWorker = new Worker(mainWorkerUrl, { type: 'module' })
     const logger = new duckdb.ConsoleLogger()
     db = new duckdb.AsyncDuckDB(logger, internalWorker)
-    await db.instantiate(duckdbWasmUrl)
+    await db.instantiate(wasmBlobUrl)
 
     self.postMessage({ type: 'INIT_SUCCESS' })
   } catch (err) {
