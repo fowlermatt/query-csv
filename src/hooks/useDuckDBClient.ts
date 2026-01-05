@@ -68,12 +68,14 @@ export default function useDuckDBClient() {
         }
 
         case 'REGISTER_SUCCESS': {
+          console.timeEnd('Ingest') // End timing when worker confirms table is registered
           setFileStatus('ready')
           // NEW: refresh schema shortly after registering file/view
           setTimeout(() => workerRef.current?.postMessage({ type: 'GET_SCHEMA' }), 50)
           break
         }
         case 'REGISTER_FAILURE': {
+          console.timeEnd('Ingest') // End timing even on failure
           setFileStatus('error')
           break
         }
@@ -158,10 +160,25 @@ export default function useDuckDBClient() {
     }
   }, [])
 
-  const registerFile = (file: File) => {
+  const registerFile = async (file: File) => {
     if (!workerRef.current) return
     setFileStatus('registering')
-    workerRef.current.postMessage({ type: 'REGISTER_FILE', file })
+
+    // Start timing BEFORE reading file into buffer
+    console.time('Ingest')
+
+    // Read file into ArrayBuffer on main thread
+    const arrayBuffer = await file.arrayBuffer()
+
+    // Transfer the ArrayBuffer (zero-copy) to worker
+    workerRef.current.postMessage(
+      {
+        type: 'REGISTER_FILE',
+        fileName: file.name,
+        buffer: arrayBuffer,
+      },
+      [arrayBuffer] // Transfer list - this makes it zero-copy!
+    )
   }
 
   const runQuery = (sql: string) => {

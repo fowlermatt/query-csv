@@ -77,7 +77,7 @@ async function fetchWithProgress(url: string): Promise<Blob> {
     wasmBlobUrl = URL.createObjectURL(wasmBlob)
 
     const internalWorker = new Worker(mainWorkerUrl, { type: 'module' })
-    const logger = new duckdb.ConsoleLogger()
+    const logger = new duckdb.VoidLogger()
     db = new duckdb.AsyncDuckDB(logger, internalWorker)
     await db.instantiate(wasmBlobUrl)
 
@@ -131,18 +131,23 @@ self.addEventListener('message', async (evt: MessageEvent) => {
     case 'REGISTER_FILE': {
       try {
         if (!db) return self.postMessage({ type: 'REGISTER_FAILURE', payload: 'Database not initialized' })
-        const file: File | undefined = msg.file
-        if (!file) return self.postMessage({ type: 'REGISTER_FAILURE', payload: 'No file provided' })
+
+        // Accept transferred ArrayBuffer (zero-copy from main thread)
+        const buffer: ArrayBuffer | undefined = msg.buffer
+        const fileName: string | undefined = msg.fileName
+        if (!buffer) return self.postMessage({ type: 'REGISTER_FAILURE', payload: 'No buffer provided' })
+        if (!fileName) return self.postMessage({ type: 'REGISTER_FAILURE', payload: 'No fileName provided' })
 
         const VIRTUAL_NAME = 'source'
-        const lower = (file.name || '').toLowerCase()
+        const lower = fileName.toLowerCase()
 
-        if (lower.endsWith('.csv')) {
-          const text = await file.text()
-          await db.registerFileText(VIRTUAL_NAME, text)
-        } else if (lower.endsWith('.parquet')) {
-          const buf = new Uint8Array(await file.arrayBuffer())
-          await db.registerFileBuffer(VIRTUAL_NAME, buf)
+        // Wrap in Uint8Array (view, not copy) for DuckDB registration
+        const uint8 = new Uint8Array(buffer)
+
+        if (lower.endsWith('.csv') || lower.endsWith('.parquet')) {
+          // Register raw buffer directly - no text decoding needed
+          // DuckDB handles CSV/Parquet parsing internally from binary
+          await db.registerFileBuffer(VIRTUAL_NAME, uint8)
         } else {
           return self.postMessage({
             type: 'REGISTER_FAILURE',
@@ -155,7 +160,7 @@ self.addEventListener('message', async (evt: MessageEvent) => {
           await conn.query(`DROP VIEW IF EXISTS source`)
           if (lower.endsWith('.csv')) {
             await conn.query(
-              `CREATE VIEW source AS SELECT * FROM read_csv_auto('${VIRTUAL_NAME}', header=true)`
+              `CREATE VIEW source AS SELECT * FROM read_csv_auto('${VIRTUAL_NAME}', header=true, sample_size=1000)`
             )
           } else {
             await conn.query(
@@ -182,10 +187,10 @@ self.addEventListener('message', async (evt: MessageEvent) => {
 
       let conn: duckdb.AsyncDuckDBConnection | null = null
       try {
-        console.log('[duckdb.worker] exec start:', sql)
         conn = await db.connect()
+        console.time('QueryTimer')
         const table = await conn.query(sql)
-        console.log('[duckdb.worker] exec got table with rows:', (table as any).numRows ?? 'unknown')
+        console.timeEnd('QueryTimer')
 
         let sent = false
         try {
