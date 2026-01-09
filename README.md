@@ -1,4 +1,4 @@
-# QueryBox 📊
+# QueryBox
 
 > **In-Browser SQL Query Engine & Data Visualization Tool**
 
@@ -8,7 +8,7 @@ By leveraging **DuckDB-WASM** and **Web Workers**, QueryBox moves heavy computat
 
 ---
 
-## 🚀 Key Features
+## Key Features
 
 * **Serverless SQL Execution:** Run full SQL queries on local files without uploading data to a backend.
 * **High-Performance Architecture:** Non-blocking query execution using Web Workers.
@@ -21,7 +21,7 @@ By leveraging **DuckDB-WASM** and **Web Workers**, QueryBox moves heavy computat
 
 ---
 
-## 🛠 Tech Stack
+## Tech Stack
 
 * **Frontend:** React, TypeScript, Vite
 * **Engine:** DuckDB-WASM
@@ -33,7 +33,7 @@ By leveraging **DuckDB-WASM** and **Web Workers**, QueryBox moves heavy computat
 
 ---
 
-## 🏗 Architecture & Engineering
+## Architecture & Engineering
 
 This project was built to solve specific frontend performance bottlenecks associated with browser-based data processing.
 
@@ -65,14 +65,6 @@ sequenceDiagram
     Worker->>React_UI: Return Apache Arrow Buffer (Zero-Copy)
     React_UI->>User: Render Virtualized Table
  ```
-## 🎯 Key Skills Demonstrated
-
-* **Frontend Performance Optimization:** Implementing virtualization and zero-copy data transfer to handle large datasets in the browser.
-* **Browser-Based Data Processing:** Utilizing WASM (WebAssembly) to run high-performance backend logic (DuckDB) on the client side.
-* **SQL Engine Integration:** Architecting a client-side engine that interfaces directly with raw file buffers.
-* **Scalable TypeScript Architecture:** Structured a robust codebase capable of handling asynchronous worker communication and complex state management.
-
----
 
 ## ⚡ Getting Started
 
@@ -82,7 +74,7 @@ sequenceDiagram
 
 ---
 
-## 🧪 Usage
+##  Usage
 
 1.  Click **"Load File"** to select a local CSV or Parquet file.
 2.  The file is automatically registered as a table (e.g., `my_data`).
@@ -94,7 +86,3 @@ sequenceDiagram
 5.  View results in the virtualized grid or download as CSV.
 
 ---
-
-## 📄 License
-
-Distributed under the MIT License. See `LICENSE` for more information.
