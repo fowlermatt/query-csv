@@ -66,7 +66,7 @@ sequenceDiagram
     React_UI->>User: Render Virtualized Table
  ```
 
-## ⚡ Getting Started
+##  Getting Started
 
 | Project | Live Demo |
 | :--- | :--- |
